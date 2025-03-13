@@ -6,7 +6,7 @@ use panic_probe as _;
 
 #[rtic::app(device=stm32f4xx_hal::pac, peripherals=true, dispatchers=[USART6])]
 mod app {
-    use bxcan::{filter::Mask32, Frame, Id, Rx0, Rx1, Tx};
+    use bxcan::{filter::Mask32, Frame, Id, Rx0, Rx1, StandardId, Tx};
     use defmt::*;
     use stm32f4xx_hal::{
         can::Can,
@@ -18,6 +18,7 @@ mod app {
     use systick_monotonic::{ExtU64, Systick};
 
     static LED_BLINK_TIME_MS: u64 = 25;
+    static CAN_ID: u8 = 0b_0010;
 
     #[monotonic(binds = SysTick, default = true)]
     type Tonic = Systick<1_000>;
@@ -42,15 +43,16 @@ mod app {
             .cfgr
             // .use_hse(16.MHz())
             .sysclk(64.MHz())
+            .pclk1(8.MHz())
             .freeze();
 
         let gpioa = ctx.device.GPIOA.split();
         let gpiob = ctx.device.GPIOB.split();
 
         let mut bxcan = bxcan::Can::builder(ctx.device.CAN1.can((gpiob.pb9, gpiob.pb8)))
-            .set_bit_timing(0x001c_0003)
+            .set_bit_timing(0x00050000) // 1Mbps
             .set_automatic_retransmit(true)
-            .set_loopback(true)
+            .set_loopback(false)
             .set_silent(false)
             .leave_disabled();
         let mut filters = bxcan.modify_filters();
@@ -96,8 +98,14 @@ mod app {
             let recv = nb::block!(ctx.local.rx0.receive());
             if let Ok(frame) = recv {
                 if let Id::Standard(id) = frame.id() {
-                    debug!("id: {}, data: {}", id.as_raw(), frame.data());
-                    let _ = transmit::spawn(frame);
+                    let data = frame.data().unwrap();
+                    debug!("id: {}, data: {}", id.as_raw(), data);
+                    let (from, to, endpoint) = parse_id(&id);
+                    if to == CAN_ID {
+                        let id = build_id(CAN_ID, from, endpoint).unwrap();
+                        let frame = Frame::new_data(id, *data);
+                        let _ = transmit::spawn(frame);
+                    }
                 }
             }
         });
@@ -112,8 +120,14 @@ mod app {
             let recv = nb::block!(ctx.local.rx1.receive());
             if let Ok(frame) = recv {
                 if let Id::Standard(id) = frame.id() {
-                    debug!("id: {}, data: {}", id.as_raw(), frame.data());
-                    let _ = transmit::spawn(frame);
+                    let data = frame.data().unwrap();
+                    debug!("id: {}, data: {}", id.as_raw(), data);
+                    let (from, to, endpoint) = parse_id(&id);
+                    if to == CAN_ID {
+                        let id = build_id(CAN_ID, from, endpoint).unwrap();
+                        let frame = Frame::new_data(id, *data);
+                        let _ = transmit::spawn(frame);
+                    }
                 }
             }
         });
@@ -131,5 +145,18 @@ mod app {
         ctx.shared.rx_led.lock(|rx_led| {
             rx_led.set_low();
         });
+    }
+
+    fn build_id(from: u8, to: u8, endpoint: u8) -> Option<StandardId> {
+        let raw_id = (from as u16) << 8 | (to as u16) << 3 | endpoint as u16;
+        StandardId::new(raw_id)
+    }
+
+    fn parse_id(id: &StandardId) -> (u8, u8, u8) {
+        let raw_id = id.as_raw();
+        let from = ((raw_id & 0b_1111_0000_000) >> 8) as u8;
+        let to = ((raw_id & 0b_0000_1111_000) >> 3) as u8;
+        let endpoint = (raw_id & 0b_0000_0000_111) as u8;
+        (from, to, endpoint)
     }
 }
