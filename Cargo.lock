@@ -33,6 +33,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
 
 [[package]]
+name = "bit_field"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc827186963e592360843fb5ba4b973e145841266c1357f7180c43526f2e5b61"
+
+[[package]]
 name = "bitfield"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -465,8 +471,17 @@ dependencies = [
  "defmt-rtt",
  "nb 1.1.0",
  "panic-probe",
+ "roboken-rs",
  "stm32f4xx-hal",
  "systick-monotonic",
+]
+
+[[package]]
+name = "roboken-rs"
+version = "0.1.0"
+source = "git+https://github.com/Netetra/roboken-rs.git#a4713e61c432461a01f7d0e4af463bdd3d399df0"
+dependencies = [
+ "bit_field",
 ]
 
 [[package]]
